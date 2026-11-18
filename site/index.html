@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentTrust — Reputation Board for Agent ID Holders</title>
+<style>
+  :root{--bg:#0b1020;--card:#151b31;--line:#273056;--txt:#eef1ff;--mut:#9aa5c9;--acc:#5ee1a0;--warn:#ffb454}
+  *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt)}
+  header{padding:28px 20px 8px;max-width:960px;margin:auto}
+  .logo{font-size:30px;font-weight:800;letter-spacing:.3px}.logo span{color:var(--acc)}
+  .tag{color:var(--mut);margin-top:6px}
+  main{max-width:960px;margin:auto;padding:16px 20px 40px;display:grid;gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .stat b{font-size:26px;display:block}.stat small{color:var(--mut)}
+  button{background:var(--acc);color:#06130c;border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  input,select{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0e1430;color:var(--txt);margin:6px 0 10px}
+  label{color:var(--mut);font-size:13px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .pill{border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:13px;color:var(--mut)}
+  .ok{color:var(--acc)} .bad{color:var(--warn)}
+  ul{margin:8px 0;padding-left:18px} li{margin:6px 0;word-break:break-word}
+  .small{font-size:13px;color:var(--mut);line-height:1.55}
+  a{color:var(--acc)}
+  code{background:#0e1430;padding:2px 6px;border-radius:6px;word-break:break-all}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Agent<span>Trust</span></div>
+  <div class="tag">An on-chain reputation &amp; endorsement board, exclusively for Agent ID holders.</div>
+</header>
+<main>
+  <section class="card">
+    <div class="row">
+      <button id="connectBtn">Connect Wallet</button>
+      <span class="pill" id="walletAddr">not connected</span>
+      <span class="pill" id="agentStatus">Agent ID: unknown</span>
+      <span class="pill" id="badgeStatus">Badge: unknown</span>
+    </div>
+    <p class="small" id="statusMsg">Connect a wallet on BSC Mainnet (chain 56). AgentTrust reads your Agent ID balance from the public registry contract to decide if you can write. Reading is always free and open to everyone.</p>
+  </section>
+
+  <section class="card grid">
+    <div class="stat"><b id="statJoined">–</b><small>agents joined</small></div>
+    <div class="stat"><b id="statBadges">–</b><small>genesis badges</small></div>
+    <div class="stat"><b id="statWall">–</b><small>wall signatures</small></div>
+    <div class="stat"><b id="statMine">–</b><small>endorsements received by you</small></div>
+  </section>
+
+  <section class="card">
+    <h3>1 · Claim your Genesis Badge</h3>
+    <p class="small">One non-transferable badge record per Agent ID wallet. It is a reputation marker only — it is not a tradable token and has no monetary value.</p>
+    <button id="claimBtn" disabled>Claim Badge</button>
+  </section>
+
+  <section class="card">
+    <h3>2 · Endorse another agent</h3>
+    <label>Target wallet address (must also hold an Agent ID)</label>
+    <input id="endorseAddr" placeholder="0x...">
+    <label>Category</label>
+    <select id="endorseCat">
+      <option value="0">Builder</option>
+      <option value="1">Trader</option>
+      <option value="2">Creator</option>
+      <option value="3">Helper</option>
+    </select>
+    <button id="endorseBtn" disabled>Endorse</button>
+  </section>
+
+  <section class="card">
+    <h3>3 · Sign the wall</h3>
+    <label>Short message (max 140 characters, one per wallet per day)</label>
+    <input id="wallText" maxlength="140" placeholder="Building in public with my Agent ID">
+    <button id="signBtn" disabled>Sign Wall</button>
+  </section>
+
+  <section class="card">
+    <h3>Leaderboard — most endorsed agents</h3>
+    <ul id="leaderboard"><li class="small">Loading from on-chain events…</li></ul>
+  </section>
+
+  <section class="card">
+    <h3>Wall — latest signatures</h3>
+    <ul id="wallFeed"><li class="small">Loading…</li></ul>
+  </section>
+
+  <section class="card">
+    <h3>Risk disclaimer</h3>
+    <p class="small">AgentTrust is an experimental reputation board provided for demonstration and community purposes. Badges and endorsements are non-transferable records with no monetary value. Nothing on this page is financial advice, and nothing here promises or implies any return, reward, income, or profit. Interacting with any smart contract involves risk, including bugs and network failures — verify the contract address and source code yourself before transacting, and never share your seed phrase, private key, or pairing code with anyone, including this site. This site never asks for those credentials and never requires you to log in through a third-party web page.</p>
+    <p class="small">Contract: <code id="contractAddr"></code><br>Agent ID registry: <code>0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F</code></p>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script>
+// ============================================================
+// CONFIG — set this ONE value after deployment
+// ============================================================
+const CONFIG = {
+  contractAddress: "0x9F5b0726197390138d9ebE1e7B873FD5B4528a0c", // AgentTrust, deployed 2026-11-18
+  agentIdRegistry: "0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F",
+  chainId: 56,
+  rpcUrl: "https://bsc-mainnet.public.blastapi.io",
+  deployBlock: 134300557 // deployment block (2026-11-18)
+};
+
+const REGISTRY_ABI = ["function balanceOf(address) view returns (uint256)"];
+const TRUST_ABI = [
+  "function hasBadge(address) view returns (bool)",
+  "function badgeIdOf(address) view returns (uint256)",
+  "function totalBadges() view returns (uint256)",
+  "function totalAgentsJoined() view returns (uint256)",
+  "function endorsementCountOf(address) view returns (uint256)",
+  "function wallCount() view returns (uint256)",
+  "function getWallEntry(uint256) view returns (address,string,uint256)",
+  "function getRecentWallEntries(uint256) view returns (tuple(address author,string message,uint256 timestamp)[])",
+  "function claimBadge()",
+  "function endorse(address,uint8)",
+  "function signWall(string)",
+  "event Endorsed(address indexed endorser, address indexed target, uint8 indexed category, uint256 newTotalForTarget)",
+  "event WallSigned(address indexed author, uint256 indexed entryIndex, string message)",
+  "event BadgeClaimed(address indexed agent, uint256 indexed badgeId)"
+];
+
+const $ = id => document.getElementById(id);
+let provider, signer, account, trustRead, trustWrite, registryRead;
+const deployed = CONFIG.contractAddress !== "0x0000000000000000000000000000000000000000";
+$("contractAddr").textContent = deployed ? CONFIG.contractAddress : "not deployed yet (placeholder)";
+
+function setMsg(t, cls){ const el=$("statusMsg"); el.textContent=t; el.className="small "+(cls||""); }
+function short(a){ return a ? a.slice(0,6)+"…"+a.slice(-4) : ""; }
+
+async function initRead(){
+  provider = new ethers.JsonRpcProvider(CONFIG.rpcUrl);
+  registryRead = new ethers.Contract(CONFIG.agentIdRegistry, REGISTRY_ABI, provider);
+  if (deployed) trustRead = new ethers.Contract(CONFIG.contractAddress, TRUST_ABI, provider);
+  await refreshStats();
+  await refreshWall();
+  await refreshLeaderboard();
+}
+
+async function refreshStats(){
+  if (!trustRead) { setMsg("Contract not deployed yet — read-only demo mode. Set CONFIG.contractAddress after deployment."); return; }
+  try {
+    const [joined, badges, wall] = await Promise.all([trustRead.totalAgentsJoined(), trustRead.totalBadges(), trustRead.wallCount()]);
+    $("statJoined").textContent = joined; $("statBadges").textContent = badges; $("statWall").textContent = wall;
+    if (account) $("statMine").textContent = await trustRead.endorsementCountOf(account);
+  } catch(e){ console.warn(e); }
+}
+
+async function refreshWall(){
+  if (!trustRead) { $("wallFeed").innerHTML = '<li class="small">Available after deployment.</li>'; return; }
+  try {
+    const entries = await trustRead.getRecentWallEntries(20);
+    const items = [...entries].reverse().map(e =>
+      `<li><b>${short(e.author)}</b> — ${e.message.replace(/</g,"&lt;")} <span class="small">(${new Date(Number(e.timestamp)*1000).toLocaleString()})</span></li>`);
+    $("wallFeed").innerHTML = items.length ? items.join("") : '<li class="small">No signatures yet — be the first.</li>';
+  } catch(e){ $("wallFeed").innerHTML = '<li class="small">Could not load wall.</li>'; }
+}
+
+async function refreshLeaderboard(){
+  if (!trustRead) { $("leaderboard").innerHTML = '<li class="small">Available after deployment.</li>'; return; }
+  try {
+    const events = await trustRead.queryFilter(trustRead.filters.Endorsed(), CONFIG.deployBlock, "latest");
+    const counts = {};
+    for (const ev of events) counts[ev.args.target] = (counts[ev.args.target]||0)+1;
+    const top = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+    $("leaderboard").innerHTML = top.length
+      ? top.map(([a,c],i)=>`<li>#${i+1} <b>${short(a)}</b> — ${c} endorsement${c>1?"s":""}</li>`).join("")
+      : '<li class="small">No endorsements yet.</li>';
+  } catch(e){ $("leaderboard").innerHTML = '<li class="small">Leaderboard loads from events and may take a moment on a fresh deployment.</li>'; }
+}
+
+async function refreshAccountState(){
+  if (!account) return;
+  $("walletAddr").textContent = short(account);
+  try {
+    const bal = await registryRead.balanceOf(account);
+    const isAgent = bal > 0n;
+    $("agentStatus").textContent = "Agent ID: " + (isAgent ? "holder ✓" : "not a holder");
+    $("agentStatus").className = "pill " + (isAgent ? "ok" : "bad");
+    let has = false;
+    if (trustRead) { has = await trustRead.hasBadge(account); }
+    $("badgeStatus").textContent = "Badge: " + (has ? "claimed ✓" : "not claimed");
+    const canWrite = isAgent && deployed;
+    $("claimBtn").disabled = !canWrite || has;
+    $("endorseBtn").disabled = !canWrite;
+    $("signBtn").disabled = !canWrite;
+    if (!isAgent) setMsg("This wallet does not hold an Agent ID, so it can read everything but cannot claim, endorse, or sign. Agent IDs are claimed inside the wallet app.", "bad");
+    else if (!deployed) setMsg("You hold an Agent ID ✓ — write buttons activate once the contract is deployed and CONFIG is set.");
+    else setMsg("You hold an Agent ID ✓ — you can claim, endorse, and sign.", "ok");
+  } catch(e){ setMsg("Could not check Agent ID status: " + e.message); }
+  await refreshStats();
+}
+
+async function connect(){
+  if (!window.ethereum) { setMsg("No wallet found. Open this page inside a wallet browser or install a wallet extension.", "bad"); return; }
+  const bp = new ethers.BrowserProvider(window.ethereum);
+  await bp.send("eth_requestAccounts", []);
+  try {
+    const net = await bp.getNetwork();
+    if (Number(net.chainId) !== CONFIG.chainId) {
+      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
+    }
+  } catch(e){ /* user may switch manually */ }
+  signer = await bp.getSigner();
+  account = await signer.getAddress();
+  if (deployed) trustWrite = new ethers.Contract(CONFIG.contractAddress, TRUST_ABI, signer);
+  await refreshAccountState();
+}
+
+async function runTx(fn, okMsg){
+  try { setMsg("Confirm the transaction in your wallet…"); const tx = await fn(); setMsg("Transaction sent: " + tx.hash + " — waiting for confirmation…"); await tx.wait(); setMsg(okMsg, "ok"); await refreshAccountState(); await refreshWall(); await refreshLeaderboard(); }
+  catch(e){ setMsg("Transaction failed: " + (e.shortMessage || e.message), "bad"); }
+}
+
+$("connectBtn").onclick = connect;
+$("claimBtn").onclick = () => runTx(() => trustWrite.claimBadge(), "Badge claimed ✓");
+$("endorseBtn").onclick = () => {
+  const a = $("endorseAddr").value.trim(), c = Number($("endorseCat").value);
+  if (!ethers.isAddress(a)) { setMsg("That target address is not valid.", "bad"); return; }
+  runTx(() => trustWrite.endorse(a, c), "Endorsement recorded ✓");
+};
+$("signBtn").onclick = () => {
+  const t = $("wallText").value.trim();
+  if (!t) { setMsg("Write a message first.", "bad"); return; }
+  runTx(() => trustWrite.signWall(t), "Wall signed ✓");
+};
+
+initRead();
+</script>
+</body>
+</html>
