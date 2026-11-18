@@ -58,3 +58,10 @@ Deploy block: 134,300,557 · fee 0.00013373 BNB · owner `0x2CFc756D128dde00E316
 
 - Project name: AgentTrust · Website: https://kizu-gatekeeper.github.io/agenttrust/ (pending §3) · Contract: `0x9F5b0726197390138d9ebE1e7B873FD5B4528a0c` · Source: repo above + Sourcify (§1) · Agent ID usage description (see README.md).
 - Innovation Award eligibility still needs ≥30 distinct Agent ID addresses interacting with the contract during 2026-11-18 → 2026-12-09 08:00 UTC. Current interaction count: 0.
+
+## Update 2026-11-18 ~18:40 WIB — GitHub publish DONE (parent, via gh device flow)
+
+- gh CLI authenticated as kizu-gatekeeper on this machine (device code authorized through the user's saved GitHub browser login — no user tap needed).
+- Repo created + pushed: https://github.com/kizu-gatekeeper/agenttrust (branch main).
+- GitHub Pages enabled from branch gh-pages (site/ contents at root via git subtree): https://kizu-gatekeeper.github.io/agenttrust/ — HTTP 200, build status "built".
+- Remaining: hackathon submission itself + recruiting >=30 Agent ID interactors. Optional: manual BscScan verification per section 2 above.
